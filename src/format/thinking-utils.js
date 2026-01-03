@@ -4,6 +4,7 @@
  */
 
 import { MIN_SIGNATURE_LENGTH } from '../constants.js';
+import { getCachedSignatureFamily } from './signature-cache.js';
 import { logger } from '../utils/logger.js';
 
 /**
@@ -407,18 +408,40 @@ export function needsThinkingRecovery(messages, targetFamily = null) {
 }
 
 /**
- * Strip all thinking blocks from messages.
+ * Strip invalid or incompatible thinking blocks from messages.
  * Used before injecting synthetic messages for recovery.
+ * Keeps valid thinking blocks to preserve context from previous turns.
  *
  * @param {Array<Object>} messages - Array of messages
- * @returns {Array<Object>} Messages with all thinking blocks removed
+ * @param {string} targetFamily - Target model family ('claude' or 'gemini')
+ * @returns {Array<Object>} Messages with invalid thinking blocks removed
  */
-function stripAllThinkingBlocks(messages) {
+function stripInvalidThinkingBlocks(messages, targetFamily = null) {
     return messages.map(msg => {
         const content = msg.content || msg.parts;
         if (!Array.isArray(content)) return msg;
 
-        const filtered = content.filter(block => !isThinkingPart(block));
+        const filtered = content.filter(block => {
+            // Keep non-thinking blocks
+            if (!isThinkingPart(block)) return true;
+
+            // Check generic validity (has signature of sufficient length)
+            if (!hasValidSignature(block)) return false;
+
+            // Check family compatibility if targetFamily is provided
+            if (targetFamily) {
+                const signature = block.thought === true ? block.thoughtSignature : block.signature;
+                const signatureFamily = getCachedSignatureFamily(signature);
+
+                // Strict validation: If we don't know the family (cache miss) or it doesn't match,
+                // we drop it. We don't assume validity for unknown signatures.
+                if (signatureFamily !== targetFamily) {
+                    return false;
+                }
+            }
+
+            return true;
+        });
 
         if (msg.content) {
             return { ...msg, content: filtered.length > 0 ? filtered : [{ type: 'text', text: '.' }] };
@@ -439,16 +462,17 @@ function stripAllThinkingBlocks(messages) {
  * loop and allow the model to continue.
  *
  * @param {Array<Object>} messages - Array of messages
+ * @param {string} targetFamily - Target model family ('claude' or 'gemini')
  * @returns {Array<Object>} Modified messages with synthetic messages injected
  */
-export function closeToolLoopForThinking(messages) {
+export function closeToolLoopForThinking(messages, targetFamily = null) {
     const state = analyzeConversationState(messages);
 
     // Handle neither tool loop nor interrupted tool
     if (!state.inToolLoop && !state.interruptedTool) return messages;
 
-    // Strip all thinking blocks
-    let modified = stripAllThinkingBlocks(messages);
+    // Strip only invalid/incompatible thinking blocks (keep valid ones)
+    let modified = stripInvalidThinkingBlocks(messages, targetFamily);
 
     if (state.interruptedTool) {
         // For interrupted tools: just strip thinking and add a synthetic assistant message

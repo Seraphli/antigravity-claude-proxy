@@ -85,7 +85,7 @@ export function convertAnthropicToGoogle(anthropicRequest) {
 
     if (isThinking && targetFamily && needsThinkingRecovery(messages, targetFamily)) {
         logger.debug(`[RequestConverter] Applying thinking recovery for ${targetFamily}`);
-        processedMessages = closeToolLoopForThinking(messages);
+        processedMessages = closeToolLoopForThinking(messages, targetFamily);
     }
 
     // Convert messages to contents, then filter unsigned thinking blocks
