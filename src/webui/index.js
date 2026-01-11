@@ -18,7 +18,7 @@ import { fileURLToPath } from 'url';
 import express from 'express';
 import { getPublicConfig, saveConfig, config } from '../config.js';
 import { DEFAULT_PORT, ACCOUNT_CONFIG_PATH } from '../constants.js';
-import { readClaudeConfig, updateClaudeConfig, getClaudeConfigPath } from '../utils/claude-config.js';
+import { readClaudeConfig, updateClaudeConfig, replaceClaudeConfig, getClaudeConfigPath } from '../utils/claude-config.js';
 import { logger } from '../utils/logger.js';
 import { getAuthorizationUrl, completeOAuthFlow, startCallbackServer } from '../auth/oauth.js';
 import { loadAccounts, saveAccounts } from '../account-manager/storage.js';
@@ -434,6 +434,52 @@ export function mountWebUI(app, dirname, accountManager) {
                 message: 'Claude configuration updated'
             });
         } catch (error) {
+            res.status(500).json({ status: 'error', error: error.message });
+        }
+    });
+
+    /**
+     * POST /api/claude/config/restore - Restore Claude CLI to default (remove proxy settings)
+     */
+    app.post('/api/claude/config/restore', async (req, res) => {
+        try {
+            const claudeConfig = await readClaudeConfig();
+
+            // Proxy-related environment variables to remove when restoring defaults
+            const PROXY_ENV_VARS = [
+                'ANTHROPIC_BASE_URL',
+                'ANTHROPIC_AUTH_TOKEN',
+                'ANTHROPIC_MODEL',
+                'CLAUDE_CODE_SUBAGENT_MODEL',
+                'ANTHROPIC_DEFAULT_OPUS_MODEL',
+                'ANTHROPIC_DEFAULT_SONNET_MODEL',
+                'ANTHROPIC_DEFAULT_HAIKU_MODEL',
+                'ENABLE_EXPERIMENTAL_MCP_CLI'
+            ];
+
+            // Remove proxy-related environment variables to restore defaults
+            if (claudeConfig.env) {
+                for (const key of PROXY_ENV_VARS) {
+                    delete claudeConfig.env[key];
+                }
+                // Remove env entirely if empty to truly restore defaults
+                if (Object.keys(claudeConfig.env).length === 0) {
+                    delete claudeConfig.env;
+                }
+            }
+
+            // Use replaceClaudeConfig to completely overwrite the config (not merge)
+            const newConfig = await replaceClaudeConfig(claudeConfig);
+
+            logger.info(`[WebUI] Restored Claude CLI config to defaults at ${getClaudeConfigPath()}`);
+
+            res.json({
+                status: 'ok',
+                config: newConfig,
+                message: 'Claude CLI configuration restored to defaults'
+            });
+        } catch (error) {
+            logger.error('[WebUI] Error restoring Claude config:', error);
             res.status(500).json({ status: 'error', error: error.message });
         }
     });
