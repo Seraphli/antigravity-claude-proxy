@@ -197,32 +197,57 @@ export async function getSubscriptionTier(token) {
             }
 
             // Extract subscription tier
-            // Priority: paidTier > currentTier > allowedTiers
+            // Priority: paidTier (if not free) > allowedTiers (highest) > currentTier > paidTier (free)
             // - paidTier.id: "g1-pro-tier", "g1-ultra-tier" (Google One subscription)
             // - currentTier.id: "standard-tier" (pro), "free-tier" (free)
-            // - allowedTiers: fallback when currentTier is missing
-            // Note: paidTier is sometimes missing from the response even for Pro accounts
+            // - allowedTiers: may contain higher tiers than paidTier (e.g., standard-tier when paidTier is free)
+            //
+            // Special case: paidTier can be "free-tier" but allowedTiers may still grant "standard-tier"
+            // This happens when users are ineligible for Google One AI quotas but have access through other programs
             let tier = 'unknown';
             let tierId = null;
             let tierSource = null;
 
-            // 1. Check paidTier first (Google One AI subscription - most reliable)
+            // 1. Check paidTier first - if it's Pro/Ultra, use it immediately
             if (data.paidTier?.id) {
                 tierId = data.paidTier.id;
                 tier = parseTierId(tierId);
                 tierSource = 'paidTier';
             }
 
-            // 2. Fall back to currentTier if paidTier didn't give us a tier
+            // 2. If paidTier is free or unknown, check allowedTiers for higher tiers
+            // Some accounts have paidTier=free but allowedTiers includes standard-tier
+            if ((tier === 'free' || tier === 'unknown') && Array.isArray(data.allowedTiers) && data.allowedTiers.length > 0) {
+                // Check for ultra first, then pro/standard
+                const hasUltra = data.allowedTiers.some(t => t?.id?.toLowerCase().includes('ultra'));
+                const hasPro = data.allowedTiers.some(t => {
+                    const id = t?.id?.toLowerCase() || '';
+                    return id.includes('pro') || id.includes('premium') || id === 'standard-tier';
+                });
+
+                if (hasUltra) {
+                    tier = 'ultra';
+                    tierId = data.allowedTiers.find(t => t?.id?.toLowerCase().includes('ultra'))?.id;
+                    tierSource = 'allowedTiers';
+                } else if (hasPro) {
+                    tier = 'pro';
+                    tierId = data.allowedTiers.find(t => {
+                        const id = t?.id?.toLowerCase() || '';
+                        return id.includes('pro') || id.includes('premium') || id === 'standard-tier';
+                    })?.id;
+                    tierSource = 'allowedTiers';
+                }
+            }
+
+            // 3. Fall back to currentTier if still unknown
             if (tier === 'unknown' && data.currentTier?.id) {
                 tierId = data.currentTier.id;
                 tier = parseTierId(tierId);
                 tierSource = 'currentTier';
             }
 
-            // 3. Fall back to allowedTiers (find the default or first non-free tier)
+            // 4. Final fallback to allowedTiers default if still unknown
             if (tier === 'unknown' && Array.isArray(data.allowedTiers) && data.allowedTiers.length > 0) {
-                // First look for the default tier
                 let defaultTier = data.allowedTiers.find(t => t?.isDefault);
                 if (!defaultTier) {
                     defaultTier = data.allowedTiers[0];
