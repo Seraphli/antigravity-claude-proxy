@@ -38,8 +38,7 @@ const DEFAULT_CONFIG = {
         quota: {
             lowThreshold: 0.10,       // 10% - reduce score
             criticalThreshold: 0.05,  // 5% - exclude from candidates
-            staleMs: 300000,          // 5 min - max age of quota data to trust
-            weight: 3                 // Scoring weight (same scale as health/tokens)
+            staleMs: 300000           // 5 min - max age of quota data to trust
         }
     }
 };
