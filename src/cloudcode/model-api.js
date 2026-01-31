@@ -20,7 +20,8 @@ import { logger } from '../utils/logger.js';
  */
 function isSupportedModel(modelId) {
     const family = getModelFamily(modelId);
-    return family === 'claude' || family === 'gemini';
+    // Add support for OSS models (e.g. gpt-oss-120b-medium)
+    return family === 'claude' || family === 'gemini' || modelId.toLowerCase().includes('oss');
 }
 
 /**
