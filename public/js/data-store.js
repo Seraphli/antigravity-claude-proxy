@@ -328,6 +328,7 @@ document.addEventListener('alpine:init', () => {
             const lower = modelId.toLowerCase();
             if (lower.includes('claude')) return 'claude';
             if (lower.includes('gemini')) return 'gemini';
+            if (lower.includes('oss')) return 'oss';
             return 'other';
         },
 
