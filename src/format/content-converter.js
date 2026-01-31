@@ -169,7 +169,8 @@ export function convertContentToParts(content, isClaudeModel = false, isGeminiMo
                 }
 
                 // Drop blocks with unknown signature origin for Gemini (cold cache - safe default)
-                if (isGeminiModel && !signatureFamily && targetFamily) {
+                // Also apply to Claude models to prevent "Invalid signature" errors on resume (Issue #224)
+                if (!signatureFamily && targetFamily) {
                     logger.debug(`[ContentConverter] Dropping thinking with unknown signature origin`);
                     continue;
                 }
